@@ -59,8 +59,7 @@ if IS_MACOS:
     fused_kernel_extension = CppExtension(
         name='hart_backend.fused_kernels',
         sources=[
-            # "metal/rope/fused_rope.mm",
-            "metal/layernorm/layernorm_kernels.mm",
+            "metal/kernel_library.mm",
         ],
         extra_compile_args={
             "cxx": [
