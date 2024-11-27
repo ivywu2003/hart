@@ -59,6 +59,7 @@ if IS_MACOS:
     fused_kernel_extension = CppExtension(
         name='hart_backend.fused_kernels',
         sources=[
+            # "metal/rope/fused_rope.mm",
             "metal/layernorm/layernorm_kernels.mm",
         ],
         extra_compile_args={
@@ -273,9 +274,6 @@ setuptools.setup(
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     classifiers=[
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: Apache Software License",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

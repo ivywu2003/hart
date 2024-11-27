@@ -43,6 +43,9 @@ def test_rms_norm_metal():
         print(f"Std: {output.std().item():.6f}")
         print(f"Min: {output.min().item():.6f}")
         print(f"Max: {output.max().item():.6f}")
+
+        print("\nOutput values:")
+        print(output)
         
     except Exception as e:
         print(f"❌ Error occurred: {str(e)}")
