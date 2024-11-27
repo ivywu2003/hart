@@ -50,6 +50,11 @@ if IS_MACOS:
             "MPS is not available on macOS. MPS must be available to build the package."
     )
 
+    from distutils.unixccompiler import UnixCCompiler
+    if '.mm' not in UnixCCompiler.src_extensions:
+        UnixCCompiler.src_extensions.append('.mm')
+        UnixCCompiler.language_map['.mm'] = 'objc'
+
     ext_modules = []
     fused_kernel_extension = CppExtension(
         name='hart_backend.fused_kernels',

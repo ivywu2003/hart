@@ -19,7 +19,7 @@ Download the repo:
 ```bash
 git clone https://github.com/mit-han-lab/hart
 cd hart
-conda create -n hart python=3.10
+conda create -n hart python=3.11
 conda activate hart
 conda install -c nvidia cuda-toolkit -y
 pip install -e .
@@ -57,6 +57,22 @@ conda create -n hart python=3.10
 conda activate hart
 pip install -e .
 cd hart/kernels && python setup.py install
+```
+
+Verify that the new library can be imported:
+```bash
+python
+import hart_backend.fused_kernels
+```
+
+If an error is raised regarding libc10.dylib, run the following command (outside of Python):
+```bash
+export DYLD_LIBRARY_PATH=/path/to/conda/envs/hart/lib/python3.11/site-packages/torch/lib/
+```
+
+Note that this will need to be run every time you reactivate the environment. For this change to take effect permanently, run the following command and then reactivate the environment:
+```bash
+conda env config vars set DYLD_LIBRARY_PATH=/path/to/conda/envs/hart/lib/python3.11/site-packages/torch/lib/ -n hart
 ```
 
 ## Usage
