@@ -16,12 +16,10 @@ def test_rms_norm_metal():
 
     try:
         # Call the Metal implementation
-        fused.rms_norm_metal(
+        fused.rms_norm(
             output,
             input_tensor,
             weight,
-            batch_size * seq_len,
-            hidden_size,
             epsilon,
             False
         )

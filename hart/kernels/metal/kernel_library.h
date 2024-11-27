@@ -10,8 +10,6 @@ namespace hart {
 void rms_norm_metal(torch::Tensor& output,           // [..., hidden_size]
                    const torch::Tensor& input,      // [..., hidden_size]
                    const torch::Tensor& weight,     // [hidden_size]
-                   uint32_t num_tokens,
-                   uint32_t hidden_size,
                    float epsilon,
                    bool use_quant);
 

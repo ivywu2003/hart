@@ -17,11 +17,12 @@ namespace hart {
 void rms_norm_metal(torch::Tensor& output,
                    const torch::Tensor& input,
                    const torch::Tensor& weight,
-                   uint32_t num_tokens,
-                   uint32_t hidden_size,
                    float epsilon,
                    bool use_quant) {
     
+    int hidden_size = input.size(-1);
+    int num_tokens = input.numel() / hidden_size;
+
     @autoreleasepool {
         // Get the default Metal device
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -66,7 +67,7 @@ void rms_norm_metal(torch::Tensor& output,
 
             // Calculate grid and threadgroup sizes
             MTLSize gridSize = MTLSizeMake(num_tokens, 1, 1);
-            MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024u), 1, 1);
+            MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024), 1, 1);
             
             // Dispatch the kernel
             [computeEncoder dispatchThreadgroups:gridSize
@@ -346,29 +347,27 @@ at::Tensor fused_rope_backward_metal(const at::Tensor &output_grads,
 
 // Create Python bindings for the Objective-C++ code.
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("rms_norm_metal", &rms_norm_metal,
+    m.def("rms_norm", &rms_norm_metal,
         py::arg("output"), 
         py::arg("input"), 
         py::arg("weight"),
-        py::arg("num_tokens"),
-        py::arg("hidden_size"),
         py::arg("epsilon"),
         py::arg("use_quant"),
         "RMS LayerNorm implementation using Metal"
     );
-    m.def("fused_rope_with_pos_forward_metal", &fused_rope_with_pos_forward_metal,
+    m.def("fused_rope_with_pos_forward_func", &fused_rope_with_pos_forward_metal,
         py::arg("input"), 
         py::arg("freqs"),
         py::arg("transpose_output_memory"),
         "Fused RoPE with Position Embedding implementation using Metal"
     );
-    m.def("fused_rope_forward_metal", &fused_rope_forward_metal,
+    m.def("fused_rope_forward_func", &fused_rope_forward_metal,
         py::arg("input"), 
         py::arg("freqs"),
         py::arg("transpose_output_memory"),
         "Fused RoPE without Position Embedding implementation using Metal"
     );
-    m.def("fused_rope_backward_metal", &fused_rope_backward_metal,
+    m.def("fused_rope_backward_func", &fused_rope_backward_metal,
         py::arg("output_grads"), 
         py::arg("freqs"),
         py::arg("transpose_output_memory"),

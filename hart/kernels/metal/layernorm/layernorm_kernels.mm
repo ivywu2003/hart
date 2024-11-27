@@ -17,11 +17,12 @@ namespace hart {
 void rms_norm_metal(torch::Tensor& output,
                    const torch::Tensor& input,
                    const torch::Tensor& weight,
-                   uint32_t num_tokens,
-                   uint32_t hidden_size,
                    float epsilon,
                    bool use_quant) {
-    
+                    
+    int hidden_size = input.size(-1);
+    int num_tokens = input.numel() / hidden_size;
+
     @autoreleasepool {
         // Get the default Metal device
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -66,7 +67,7 @@ void rms_norm_metal(torch::Tensor& output,
 
             // Calculate grid and threadgroup sizes
             MTLSize gridSize = MTLSizeMake(num_tokens, 1, 1);
-            MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024u), 1, 1);
+            MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024), 1, 1);
             
             // Dispatch the kernel
             [computeEncoder dispatchThreadgroups:gridSize
@@ -87,8 +88,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("output"), 
         py::arg("input"), 
         py::arg("weight"),
-        py::arg("num_tokens"),
-        py::arg("hidden_size"),
         py::arg("epsilon"),
         py::arg("use_quant"),
         "RMS LayerNorm implementation using Metal"

@@ -1,6 +1,6 @@
 import torch
 import math
-from hart_backend.fused_kernels import fused_rope_with_pos_forward_metal, fused_rope_forward_metal, fused_rope_backward_metal
+from hart_backend.fused_kernels import fused_rope_with_pos_forward_func, fused_rope_forward_func, fused_rope_backward_func
 
 def get_rotary_matrix(freqs, dtype=torch.float32):
     """Helper function to generate rotary matrix from frequencies."""
@@ -33,10 +33,10 @@ def test_fused_rope_with_pos():
     freqs = freqs.to(device)
     
     # Run Metal implementation
-    out_metal = fused_rope_with_pos_forward_metal(x, freqs, False)
+    out_metal = fused_rope_with_pos_forward_func(x, freqs, False)
 
     assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
-    print("✅ Successfully called fused_rope_with_pos_forward_metal")
+    print("✅ Successfully called fused_rope_with_pos_forward_func")
     print("Output values:")
     print(out_metal)
 
@@ -59,10 +59,10 @@ def test_fused_rope():
     freqs = freqs.to(device)
     
     # Run Metal implementation
-    out_metal = fused_rope_forward_metal(x, freqs, False)
+    out_metal = fused_rope_forward_func(x, freqs, False)
 
     assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
-    print("✅ Successfully called fused_rope_forward_metal")
+    print("✅ Successfully called fused_rope_forward_func")
     print("Output values:")
     print(out_metal)
 
@@ -85,10 +85,10 @@ def test_fused_rope_backward():
     freqs = freqs.to(device)
     
     # Run Metal implementation
-    out_metal = fused_rope_backward_metal(x, freqs, False)
+    out_metal = fused_rope_backward_func(x, freqs, False)
 
     assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
-    print("✅ Successfully called fused_rope_backward_metal")
+    print("✅ Successfully called fused_rope_backward_func")
     print("Output values:")
     print(out_metal)
 
