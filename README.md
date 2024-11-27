@@ -12,7 +12,7 @@
 
 We introduce Hybrid Autoregressive Transformer (HART), an autoregressive (AR) visual generation model capable of directly generating 1024x1024 images, rivaling diffusion models in image generation quality. Existing AR models face limitations due to the poor image reconstruction quality of their discrete tokenizers and the prohibitive training costs associated with generating 1024px images. To address these challenges, we present the hybrid tokenizer, which decomposes the continuous latents from the autoencoder into two components: discrete tokens representing the big picture and continuous tokens representing the residual components that cannot be represented by the discrete tokens. The discrete component is modeled by a scalable-resolution discrete AR model, while the continuous component is learned with a lightweight residual diffusion module with only 37M parameters. Compared with the discrete-only VAR tokenizer, our hybrid approach improves reconstruction FID from **2.11** to **0.30** on MJHQ-30K, leading to a **31%** generation FID improvement from **7.85** to **5.38**. HART also outperforms state-of-the-art diffusion models in both FID and CLIP score, with **4.5-7.7x** higher throughput and **6.9-13.4x** lower MACs.
 
-## Setup
+## Setup - Windows
 
 Download the repo:
 
@@ -45,6 +45,19 @@ git clone https://huggingface.co/google/shieldgemma-2b
 ```
 
 Note: We use ShieldGemma-2B from Google DeepMind to filter out unsafe prompts in our demo. We strongly recommend using it if you are distributing our demo publicly.
+
+## Setup - MacOS
+
+Download the repo:
+
+```bash
+git clone https://github.com/mit-han-lab/hart
+cd hart
+conda create -n hart python=3.10
+conda activate hart
+pip install -e .
+cd hart/kernels && python setup.py install
+```
 
 ## Usage
 

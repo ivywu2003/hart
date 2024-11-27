@@ -8,7 +8,7 @@ from typing import List, Set
 import setuptools
 import torch
 from packaging.version import Version, parse
-from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
+from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension, CppExtension
 
 ROOT_DIR = os.path.dirname(__file__)
 
@@ -49,6 +49,26 @@ if IS_MACOS:
         raise RuntimeError(
             "MPS is not available on macOS. MPS must be available to build the package."
     )
+
+    ext_modules = []
+    fused_kernel_extension = CppExtension(
+        name='hart_backend.fused_kernels',
+        sources=[
+            "metal/layernorm/layernorm_kernels.mm",
+        ],
+        extra_compile_args={
+            "cxx": [
+                '-Wall', 
+                '-std=c++17',
+                '-framework', 
+                'Metal', 
+                '-framework', 
+                'Foundation',
+                '-ObjC++'
+            ],
+        },
+    )
+    ext_modules.append(fused_kernel_extension)
 
 else:
     if CUDA_HOME is None:
@@ -203,63 +223,63 @@ else:
     ext_modules.append(fused_kernel_extension)
 
 
-    def get_path(*filepath) -> str:
-        return os.path.join(ROOT_DIR, *filepath)
+def get_path(*filepath) -> str:
+    return os.path.join(ROOT_DIR, *filepath)
 
 
-    def find_version(filepath: str):
-        """Extract version information from the given filepath.
+def find_version(filepath: str):
+    """Extract version information from the given filepath.
 
-        Adapted from https://github.com/ray-project/ray/blob/0b190ee1160eeca9796bc091e07eaebf4c85b511/python/setup.py
-        """
-        with open(filepath) as fp:
-            version_match = re.search(
-                r"^__version__ = ['\"]([^'\"]*)['\"]", fp.read(), re.M
-            )
-            if version_match:
-                return version_match.group(1)
-            raise RuntimeError("Unable to find version string.")
-
-
-    def read_readme() -> str:
-        """Read the README file if present."""
-        p = get_path("README.md")
-        if os.path.isfile(p):
-            return open(get_path("README.md"), encoding="utf-8").read()
-        else:
-            return ""
+    Adapted from https://github.com/ray-project/ray/blob/0b190ee1160eeca9796bc091e07eaebf4c85b511/python/setup.py
+    """
+    with open(filepath) as fp:
+        version_match = re.search(
+            r"^__version__ = ['\"]([^'\"]*)['\"]", fp.read(), re.M
+        )
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
 
 
-    def get_requirements() -> List[str]:
-        """Get Python package dependencies from requirements.txt."""
-        with open(get_path("requirements.txt")) as f:
-            requirements = f.read().strip().split("\n")
-        return requirements
+def read_readme() -> str:
+    """Read the README file if present."""
+    p = get_path("README.md")
+    if os.path.isfile(p):
+        return open(get_path("README.md"), encoding="utf-8").read()
+    else:
+        return ""
 
 
-    setuptools.setup(
-        name="hart_backend",
-        version="0.1.0",
-        author="HART team, MIT HAN Lab",
-        license="Apache 2.0",
-        description=(
-            "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"
-        ),
-        long_description=read_readme(),
-        long_description_content_type="text/markdown",
-        classifiers=[
-            "Programming Language :: Python :: 3.8",
-            "Programming Language :: Python :: 3.9",
-            "Programming Language :: Python :: 3.10",
-            "Programming Language :: Python :: 3.11",
-            "License :: OSI Approved :: Apache Software License",
-            "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        ],
-        packages=setuptools.find_packages(
-            exclude=("benchmarks", "csrc", "docs", "examples", "tests")
-        ),
-        python_requires=">=3.8",
-        # install_requires=get_requirements(),
-        ext_modules=ext_modules,
-        cmdclass={"build_ext": BuildExtension},
-    )
+def get_requirements() -> List[str]:
+    """Get Python package dependencies from requirements.txt."""
+    with open(get_path("requirements.txt")) as f:
+        requirements = f.read().strip().split("\n")
+    return requirements
+
+
+setuptools.setup(
+    name="hart_backend",
+    version="0.1.0",
+    author="HART team, MIT HAN Lab",
+    license="Apache 2.0",
+    description=(
+        "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"
+    ),
+    long_description=read_readme(),
+    long_description_content_type="text/markdown",
+    classifiers=[
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
+    packages=setuptools.find_packages(
+        exclude=("benchmarks", "csrc", "docs", "examples", "tests")
+    ),
+    python_requires=">=3.8",
+    # install_requires=get_requirements(),
+    ext_modules=ext_modules,
+    cmdclass={"build_ext": BuildExtension},
+)

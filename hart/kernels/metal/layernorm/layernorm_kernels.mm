@@ -1,107 +1,87 @@
-#include <metal_stdlib>
-#include "../common/reduction_utils.metal"
-#include "../common/utils.metal"
+#include <Foundation/Foundation.h>
+#include <Metal/Metal.h>
+#include <pybind11/pybind11.h>
+#include <torch/extension.h>
+#include <algorithm>  // for std::min
 
-using namespace metal;
+#include "layernorm.h"
+
+// Helper function to retrieve the `MTLBuffer` from a `torch::Tensor`.
+static inline id<MTLBuffer> getMTLBufferStorage(const torch::Tensor& tensor) {
+  return __builtin_bit_cast(id<MTLBuffer>, tensor.storage().data());
+}
 
 namespace hart {
 
-// RMS Norm kernel for Metal
-template<typename scalar_t, typename out_type, bool use_quant>
-kernel void rms_norm_kernel(
-    device const scalar_t* input [[buffer(0)]],     // [..., hidden_size]
-    device const scalar_t* weight [[buffer(1)]],    // [hidden_size]
-    device out_type* output [[buffer(2)]],          // [..., hidden_size]
-    constant LayerNormParams& params [[buffer(3)]],
-    uint token_idx [[thread_position_in_grid]],
-    uint thread_idx [[thread_position_in_threadgroup]],
-    uint threads_per_group [[threads_per_threadgroup]]) {
-    
-    // Shared memory for variance reduction
-    threadgroup float shared_mem[32];
-    
-    const uint hidden_size = params.hidden_size;
-    float variance = 0.0f;
-    
-    // Calculate variance
-    for (uint idx = thread_idx; idx < hidden_size; idx += threads_per_group) {
-        const float x = float(input[token_idx * hidden_size + idx]);
-        variance += x * x;
-    }
-    
-    // Reduce variance across threadgroup
-    variance = threadgroupReduceSum(variance, shared_mem, thread_idx, threads_per_group);
-    
-    // Calculate normalization factor
-    float norm_factor = 0.0f;
-    if (thread_idx == 0) {
-        norm_factor = rsqrt(variance / float(hidden_size) + params.epsilon);
-        shared_mem[0] = norm_factor;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    norm_factor = shared_mem[0];
-    
-    // Apply normalization and weight
-    for (uint idx = thread_idx; idx < hidden_size; idx += threads_per_group) {
-        float x = float(input[token_idx * hidden_size + idx]);
-        if (use_quant) {
-            // Convert to int8 with rounding
-            float normalized = x * norm_factor * float(weight[idx]);
-            output[token_idx * hidden_size + idx] = 
-                out_type(clamp(round(normalized * 127.0f), -128.0f, 127.0f));
-        } else {
-            output[token_idx * hidden_size + idx] = 
-                scalar_t(x * norm_factor) * weight[idx];
-        }
-    }
-}
-
 // Wrapper function to launch the kernel with appropriate parameters
-void rms_norm_metal(const void* commandBuffer,
-                   const void* input,
-                   const void* weight,
-                   void* output,
+void rms_norm_metal(torch::Tensor& output,
+                   const torch::Tensor& input,
+                   const torch::Tensor& weight,
                    const LayerNormParams& params) {
     
-    auto* buffer = (id<MTLCommandBuffer>)commandBuffer;
-    
-    // Configure the kernel
-    auto computeEncoder = [buffer computeCommandEncoder];
-    auto pipelineState = getPipelineState("rms_norm_kernel");
-    [computeEncoder setComputePipelineState:pipelineState];
-    
-    // Set buffers
-    [computeEncoder setBuffer:input offset:0 atIndex:0];
-    [computeEncoder setBuffer:weight offset:0 atIndex:1];
-    [computeEncoder setBuffer:output offset:0 atIndex:2];
-    [computeEncoder setBytes:&params length:sizeof(LayerNormParams) atIndex:3];
-    
-    // Calculate grid and threadgroup sizes
-    MTLSize gridSize = MTLSizeMake(params.num_tokens, 1, 1);
-    MTLSize threadgroupSize = MTLSizeMake(min(params.hidden_size, 1024u), 1, 1);
-    
-    // Dispatch the kernel
-    [computeEncoder dispatchThreadgroups:gridSize
-                  threadsPerThreadgroup:threadgroupSize];
-    
-    [computeEncoder endEncoding];
+    @autoreleasepool {
+        // Get the default Metal device
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        NSError *error = nil;
+
+        id<MTLLibrary> layernormKernelLibrary = [device newLibraryWithSource:[NSString stringWithUTF8String:LAYERNORM_KERNEL]
+                                                                  options:nil
+                                                                    error:&error];
+        TORCH_CHECK(layernormKernelLibrary, "Failed to to create custom kernel library, error: ", error.localizedDescription.UTF8String);
+
+        std::string input_type = (input.scalar_type() == torch::kFloat ? "float" : "half");
+        std::string output_type = (params.use_quant ? "int8_true" : input_type + "_false");
+        std::string kernel_name = std::string("rms_norm_kernel_") + input_type + "_" + output_type;
+        id<MTLFunction> customLayernormFunction = [layernormKernelLibrary newFunctionWithName:[NSString stringWithUTF8String:kernel_name.c_str()]];
+        TORCH_CHECK(customLayernormFunction, "Failed to create function state object for ", kernel_name.c_str());
+
+        // Create a compute pipeline state object for the soft shrink kernel.
+        id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:customLayernormFunction error:&error];
+        TORCH_CHECK(pipelineState, error.localizedDescription.UTF8String);
+        
+        // Get a reference to the command buffer for the MPS stream.
+        id<MTLCommandBuffer> commandBuffer = torch::mps::get_command_buffer();
+        TORCH_CHECK(commandBuffer, "Failed to retrieve command buffer reference");
+
+        // Get a reference to the dispatch queue for the MPS stream, which encodes the synchronization with the CPU.
+        dispatch_queue_t serialQueue = torch::mps::get_dispatch_queue();
+
+        dispatch_sync(serialQueue, ^(){
+            // Start a compute pass.
+            id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+            TORCH_CHECK(computeEncoder, "Failed to create compute command encoder");
+
+            // Set the compute pipeline state.
+            [computeEncoder setComputePipelineState:pipelineState];
+
+            // Set buffers
+            [computeEncoder setBuffer:getMTLBufferStorage(output) offset:output.storage_offset() * output.element_size() atIndex:0];
+            [computeEncoder setBuffer:getMTLBufferStorage(input) offset:input.storage_offset() * input.element_size() atIndex:1];
+            [computeEncoder setBuffer:getMTLBufferStorage(weight) offset:weight.storage_offset() * weight.element_size() atIndex:2];
+            [computeEncoder setBytes:&params length:sizeof(LayerNormParams) atIndex:3];
+
+            // Calculate grid and threadgroup sizes
+            MTLSize gridSize = MTLSizeMake(params.num_tokens, 1, 1);
+            MTLSize threadgroupSize = MTLSizeMake(std::min(params.hidden_size, 1024u), 1, 1);
+            
+            // Dispatch the kernel
+            [computeEncoder dispatchThreadgroups:gridSize
+                        threadsPerThreadgroup:threadgroupSize];
+            
+            [computeEncoder endEncoding];
+
+            // Commit the work.
+            torch::mps::commit();
+        });
+    }
 }
 
-// Explicit template instantiations
-template kernel void rms_norm_kernel<float, float, false>(
-    device const float*, device const float*, device float*,
-    constant LayerNormParams&, uint, uint, uint);
 
-template kernel void rms_norm_kernel<float, int8_t, true>(
-    device const float*, device const float*, device int8_t*,
-    constant LayerNormParams&, uint, uint, uint);
-
-template kernel void rms_norm_kernel<half, half, false>(
-    device const half*, device const half*, device half*,
-    constant LayerNormParams&, uint, uint, uint);
-
-template kernel void rms_norm_kernel<half, int8_t, true>(
-    device const half*, device const half*, device int8_t*,
-    constant LayerNormParams&, uint, uint, uint);
+// Create Python bindings for the Objective-C++ code.
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("rms_norm_metal", &rms_norm_metal, 
+        py::arg("output"), py::arg("input"), py::arg("weight"), py::arg("params"),
+        "Apply Root Mean Square (RMS) Normalization to the input tensor.");
+}
 
 } // namespace hart
