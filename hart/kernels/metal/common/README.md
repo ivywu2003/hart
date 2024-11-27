@@ -1,0 +1,1 @@
+Unfortunately, newSourceFromLib does not allow imports other than the standard Metal library. If you need any of the functions in common, please copy them into the string that newSourceFromLib is called on.

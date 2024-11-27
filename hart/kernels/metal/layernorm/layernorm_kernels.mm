@@ -17,7 +17,10 @@ namespace hart {
 void rms_norm_metal(torch::Tensor& output,
                    const torch::Tensor& input,
                    const torch::Tensor& weight,
-                   const LayerNormParams& params) {
+                   uint32_t num_tokens,
+                   uint32_t hidden_size,
+                   float epsilon,
+                   bool use_quant) {
     
     @autoreleasepool {
         // Get the default Metal device
@@ -30,7 +33,7 @@ void rms_norm_metal(torch::Tensor& output,
         TORCH_CHECK(layernormKernelLibrary, "Failed to to create custom kernel library, error: ", error.localizedDescription.UTF8String);
 
         std::string input_type = (input.scalar_type() == torch::kFloat ? "float" : "half");
-        std::string output_type = (params.use_quant ? "int8_true" : input_type + "_false");
+        std::string output_type = (use_quant ? "char_true" : input_type + "_false");
         std::string kernel_name = std::string("rms_norm_kernel_") + input_type + "_" + output_type;
         id<MTLFunction> customLayernormFunction = [layernormKernelLibrary newFunctionWithName:[NSString stringWithUTF8String:kernel_name.c_str()]];
         TORCH_CHECK(customLayernormFunction, "Failed to create function state object for ", kernel_name.c_str());
@@ -58,11 +61,12 @@ void rms_norm_metal(torch::Tensor& output,
             [computeEncoder setBuffer:getMTLBufferStorage(output) offset:output.storage_offset() * output.element_size() atIndex:0];
             [computeEncoder setBuffer:getMTLBufferStorage(input) offset:input.storage_offset() * input.element_size() atIndex:1];
             [computeEncoder setBuffer:getMTLBufferStorage(weight) offset:weight.storage_offset() * weight.element_size() atIndex:2];
-            [computeEncoder setBytes:&params length:sizeof(LayerNormParams) atIndex:3];
+            [computeEncoder setBytes:&hidden_size length:sizeof(uint32_t) atIndex:3];
+            [computeEncoder setBytes:&epsilon length:sizeof(float) atIndex:4];
 
             // Calculate grid and threadgroup sizes
-            MTLSize gridSize = MTLSizeMake(params.num_tokens, 1, 1);
-            MTLSize threadgroupSize = MTLSizeMake(std::min(params.hidden_size, 1024u), 1, 1);
+            MTLSize gridSize = MTLSizeMake(num_tokens, 1, 1);
+            MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024u), 1, 1);
             
             // Dispatch the kernel
             [computeEncoder dispatchThreadgroups:gridSize
@@ -79,9 +83,16 @@ void rms_norm_metal(torch::Tensor& output,
 
 // Create Python bindings for the Objective-C++ code.
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("rms_norm_metal", &rms_norm_metal, 
-        py::arg("output"), py::arg("input"), py::arg("weight"), py::arg("params"),
-        "Apply Root Mean Square (RMS) Normalization to the input tensor.");
+    m.def("rms_norm_metal", &rms_norm_metal,
+        py::arg("output"), 
+        py::arg("input"), 
+        py::arg("weight"),
+        py::arg("num_tokens"),
+        py::arg("hidden_size"),
+        py::arg("epsilon"),
+        py::arg("use_quant"),
+        "RMS LayerNorm implementation using Metal"
+    );
 }
 
 } // namespace hart

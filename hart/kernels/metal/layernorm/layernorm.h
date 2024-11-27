@@ -6,18 +6,14 @@
 
 namespace hart {
 
-struct LayerNormParams {
-    uint num_tokens;
-    uint hidden_size;
-    float epsilon;
-    bool use_quant;
-};
-
 // Forward declarations for Metal kernel functions
 void rms_norm_metal(torch::Tensor& output,           // [..., hidden_size]
                    const torch::Tensor& input,      // [..., hidden_size]
                    const torch::Tensor& weight,     // [hidden_size]
-                   const LayerNormParams& params);
+                   uint32_t num_tokens,
+                   uint32_t hidden_size,
+                   float epsilon,
+                   bool use_quant);
 
 } // namespace hart
 
@@ -28,13 +24,47 @@ using namespace metal;
 
 namespace hart {
 
+// Metal equivalent of warpReduceSum
+template<typename T>
+inline T simdReduceSum(T val, uint simd_size = 32) {
+    for (uint offset = simd_size/2; offset > 0; offset /= 2) {
+        val += simd_shuffle_xor(val, offset);
+    }
+    return val;
+}
+
+// Metal equivalent of blockReduceSum
+template<typename T>
+inline T threadgroupReduceSum(T val, threadgroup T* shared [[threadgroup(0)]], 
+                            uint thread_index, uint threadgroup_size) {
+    const uint lane = thread_index & 0x1f;
+    const uint wid = thread_index >> 5;
+    
+    // First reduce within SIMD
+    val = simdReduceSum(val);
+    
+    // Write to shared memory
+    if (lane == 0) {
+        shared[wid] = val;
+    }
+    
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    
+    // Read from shared memory and reduce again
+    val = (thread_index < (threadgroup_size / 32.0f)) ? shared[lane] : T(0.0f);
+    val = simdReduceSum(val);
+    
+    return val;
+}
+
 // RMS Norm kernel for Metal
 template<typename scalar_t, typename out_type, bool use_quant>
 kernel void rms_norm_kernel(
-    device out_type* output [[buffer(0)]],          // [..., hidden_size]
-    device const scalar_t* input [[buffer(1)]],     // [..., hidden_size]
-    device const scalar_t* weight [[buffer(2)]],    // [hidden_size]
-    constant LayerNormParams& params [[buffer(3)]],
+    device      out_type*   output      [[buffer(0)]],        // [..., hidden_size]
+    constant    scalar_t*   input       [[buffer(1)]],        // [..., hidden_size]
+    constant    scalar_t*   weight      [[buffer(2)]],        // [hidden_size]
+    constant    uint&       hidden_size [[buffer(3)]],
+    constant    float&      epsilon     [[buffer(4)]],
     uint token_idx [[thread_position_in_grid]],
     uint thread_idx [[thread_position_in_threadgroup]],
     uint threads_per_group [[threads_per_threadgroup]]) {
@@ -42,7 +72,6 @@ kernel void rms_norm_kernel(
     // Shared memory for variance reduction
     threadgroup float shared_mem[32];
     
-    const uint hidden_size = params.hidden_size;
     float variance = 0.0f;
     
     // Calculate variance
@@ -57,7 +86,7 @@ kernel void rms_norm_kernel(
     // Calculate normalization factor
     float norm_factor = 0.0f;
     if (thread_idx == 0) {
-        norm_factor = rsqrt(variance / float(hidden_size) + params.epsilon);
+        norm_factor = rsqrt(variance / float(hidden_size) + epsilon);
         shared_mem[0] = norm_factor;
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -82,26 +111,50 @@ kernel void rms_norm_kernel(
 template 
 [[host_name("rms_norm_kernel_float_float_false")]]
 kernel void rms_norm_kernel<float, float, false>(
-    device const float*, device const float*, device float*,
-    constant LayerNormParams&, uint, uint, uint);
+    device      float*   output      [[buffer(0)]], 
+    constant    float*   input       [[buffer(1)]], 
+    constant    float*   weight      [[buffer(2)]], 
+    constant    uint&    hidden_size [[buffer(3)]],
+    constant    float&   epsilon     [[buffer(4)]],
+    uint token_idx [[thread_position_in_grid]],
+    uint thread_idx [[thread_position_in_threadgroup]],
+    uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
-[[host_name("rms_norm_kernel_float_int8_true")]]
-kernel void rms_norm_kernel<float, int8_t, true>(
-    device const float*, device const float*, device int8_t*,
-    constant LayerNormParams&, uint, uint, uint);
+[[host_name("rms_norm_kernel_float_char_true")]]
+kernel void rms_norm_kernel<float, char, true>(
+    device      char*    output      [[buffer(0)]], 
+    constant    float*   input       [[buffer(1)]], 
+    constant    float*   weight      [[buffer(2)]], 
+    constant    uint&    hidden_size [[buffer(3)]],
+    constant    float&   epsilon     [[buffer(4)]],
+    uint token_idx [[thread_position_in_grid]],
+    uint thread_idx [[thread_position_in_threadgroup]],
+    uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
 [[host_name("rms_norm_kernel_half_half_false")]]
 kernel void rms_norm_kernel<half, half, false>(
-    device const half*, device const half*, device half*,
-    constant LayerNormParams&, uint, uint, uint);
+    device      half*    output      [[buffer(0)]], 
+    constant    half*    input       [[buffer(1)]], 
+    constant    half*    weight      [[buffer(2)]], 
+    constant    uint&    hidden_size [[buffer(3)]],
+    constant    float&   epsilon     [[buffer(4)]],
+    uint token_idx [[thread_position_in_grid]],
+    uint thread_idx [[thread_position_in_threadgroup]],
+    uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
-[[host_name("rms_norm_kernel_half_int8_true")]]
-kernel void rms_norm_kernel<half, int8_t, true>(
-    device const half*, device const half*, device int8_t*,
-    constant LayerNormParams&, uint, uint, uint);
+[[host_name("rms_norm_kernel_half_char_true")]]
+kernel void rms_norm_kernel<half, char, true>(
+    device      char*    output      [[buffer(0)]], 
+    constant    half*    input       [[buffer(1)]], 
+    constant    half*    weight      [[buffer(2)]], 
+    constant    uint&    hidden_size [[buffer(3)]],
+    constant    float&   epsilon     [[buffer(4)]],
+    uint token_idx [[thread_position_in_grid]],
+    uint thread_idx [[thread_position_in_threadgroup]],
+    uint threads_per_group [[threads_per_threadgroup]]);
 
 }
 )LAYERNORM";

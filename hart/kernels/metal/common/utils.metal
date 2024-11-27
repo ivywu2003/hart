@@ -1,3 +1,5 @@
+#pragma once
+
 #include <metal_stdlib>
 
 using namespace metal;
@@ -67,7 +69,7 @@ struct packed_as<float, 4> {
     using type = float4;
 };
 
-// Metal casting functions
+// Metal casting function declarations
 template<typename To, typename From>
 inline To metal_cast(From val);
 
