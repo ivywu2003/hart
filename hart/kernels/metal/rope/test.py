@@ -1,6 +1,6 @@
 import torch
 import math
-from hart_backend.fused_kernels import fused_rope_with_pos_forward_metal
+from hart_backend.fused_kernels import fused_rope_with_pos_forward_metal, fused_rope_forward_metal, fused_rope_backward_metal
 
 def get_rotary_matrix(freqs, dtype=torch.float32):
     """Helper function to generate rotary matrix from frequencies."""
@@ -40,5 +40,59 @@ def test_fused_rope_with_pos():
     print("Output values:")
     print(out_metal)
 
+def test_fused_rope():
+    # Test parameters
+    batch_size = 2
+    seq_len = 4
+    num_heads = 3
+    head_dim = 8
+    dtype = torch.float32
+
+    device = torch.device("mps")
+    
+    # Create input tensor
+    x = torch.randn(batch_size, seq_len, num_heads, head_dim, dtype=dtype, device=device)
+    
+    # Create position frequencies
+    inv_freq = 1.0 / (10000 ** (torch.arange(0, head_dim, 2).float() / head_dim))
+    freqs = torch.outer(torch.arange(seq_len).float(), inv_freq)
+    freqs = freqs.to(device)
+    
+    # Run Metal implementation
+    out_metal = fused_rope_forward_metal(x, freqs, False)
+
+    assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
+    print("✅ Successfully called fused_rope_forward_metal")
+    print("Output values:")
+    print(out_metal)
+
+def test_fused_rope_backward():
+    # Test parameters
+    batch_size = 2
+    seq_len = 4
+    num_heads = 3
+    head_dim = 8
+    dtype = torch.float32
+
+    device = torch.device("mps")
+    
+    # Create input tensor
+    x = torch.randn(batch_size, seq_len, num_heads, head_dim, dtype=dtype, device=device)
+    
+    # Create position frequencies
+    inv_freq = 1.0 / (10000 ** (torch.arange(0, head_dim, 2).float() / head_dim))
+    freqs = torch.outer(torch.arange(seq_len).float(), inv_freq)
+    freqs = freqs.to(device)
+    
+    # Run Metal implementation
+    out_metal = fused_rope_backward_metal(x, freqs, False)
+
+    assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
+    print("✅ Successfully called fused_rope_backward_metal")
+    print("Output values:")
+    print(out_metal)
+
 if __name__ == "__main__":
     test_fused_rope_with_pos()
+    test_fused_rope()
+    test_fused_rope_backward()

@@ -19,7 +19,7 @@ Download the repo:
 ```bash
 git clone https://github.com/mit-han-lab/hart
 cd hart
-conda create -n hart python=3.11
+conda create -n hart python=3.10
 conda activate hart
 conda install -c nvidia cuda-toolkit -y
 pip install -e .
@@ -53,7 +53,7 @@ Download the repo:
 ```bash
 git clone https://github.com/mit-han-lab/hart
 cd hart
-conda create -n hart python=3.10
+conda create -n hart python=3.11
 conda activate hart
 pip install -e .
 cd hart/kernels && python setup.py install
