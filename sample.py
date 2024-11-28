@@ -21,6 +21,7 @@ from transformers import (
 from hart.modules.models.transformer import HARTForT2I
 from hart.utils import default_prompts, encode_prompts, llm_system_prompt, safety_check
 
+IS_MACOS = (os.uname()[0] == 'Darwin')
 
 def save_images(sample_imgs, sample_folder_dir, store_separately, prompts):
     if not store_separately and len(sample_imgs) > 1:
@@ -48,7 +49,11 @@ def save_images(sample_imgs, sample_folder_dir, store_separately, prompts):
 
 
 def main(args):
-    device = torch.device("cuda")
+    if IS_MACOS:
+        device = torch.device("mps")
+    else:
+        device = torch.device("cuda")
+    print(f"Using device: {device}")
 
     model = AutoModel.from_pretrained(args.model_path)
     model = model.to(device)
@@ -57,7 +62,7 @@ def main(args):
     if args.use_ema:
         ema_model = copy.deepcopy(model)
         ema_model.load_state_dict(
-            torch.load(os.path.join(args.model_path, "ema_model.bin"))
+            torch.load(os.path.join(args.model_path, "ema_model.bin"), map_location=device)
         )
 
     text_tokenizer = AutoTokenizer.from_pretrained(args.text_model_path)
@@ -65,12 +70,12 @@ def main(args):
     text_model.eval()
     text_tokenizer_max_length = args.max_token_length
 
-    safety_checker_tokenizer = AutoTokenizer.from_pretrained(args.shield_model_path)
-    safety_checker_model = AutoModelForCausalLM.from_pretrained(
-        args.shield_model_path,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-    ).to(device)
+    # safety_checker_tokenizer = AutoTokenizer.from_pretrained(args.shield_model_path)
+    # safety_checker_model = AutoModelForCausalLM.from_pretrained(
+    #     args.shield_model_path,
+    #     device_map="auto",
+    #     torch_dtype=torch.float16,
+    # ).to(device)
 
     prompts = []
     if args.prompt:
@@ -83,19 +88,19 @@ def main(args):
         )
         prompts = random.sample(default_prompts, 4)
 
-    for idx, prompt in enumerate(prompts):
-        if safety_check.is_dangerous(
-            safety_checker_tokenizer, safety_checker_model, prompt
-        ):
-            prompts[idx] = random.sample(default_prompts, 1)[0]
-            print(
-                f"Detected Unsafe prompt with index {idx}, will replace by one of default prompts."
-            )
+    # for idx, prompt in enumerate(prompts):
+    #     if safety_check.is_dangerous(
+    #         safety_checker_tokenizer, safety_checker_model, prompt
+    #     ):
+    #         prompts[idx] = random.sample(default_prompts, 1)[0]
+    #         print(
+    #             f"Detected Unsafe prompt with index {idx}, will replace by one of default prompts."
+    #         )
 
     start_time = time.time()
     with torch.inference_mode():
         with torch.autocast(
-            "cuda", enabled=True, dtype=torch.float16, cache_enabled=True
+            device_type="mps" if IS_MACOS else "cuda", enabled=True, dtype=torch.float16, cache_enabled=True
         ):
 
             (

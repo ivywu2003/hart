@@ -48,6 +48,8 @@ Note: We use ShieldGemma-2B from Google DeepMind to filter out unsafe prompts in
 
 ## Setup - MacOS
 
+We require MacOS 13.0 or later.
+
 Download the repo:
 
 ```bash
@@ -73,6 +75,24 @@ export DYLD_LIBRARY_PATH=/path/to/conda/envs/hart/lib/python3.11/site-packages/t
 Note that this will need to be run every time you reactivate the environment. For this change to take effect permanently, run the following command and then reactivate the environment:
 ```bash
 conda env config vars set DYLD_LIBRARY_PATH=/path/to/conda/envs/hart/lib/python3.11/site-packages/torch/lib/ -n hart
+```
+
+Download Qwen2-VL-1.5B-Instruct
+
+```bash
+git clone https://huggingface.co/mit-han-lab/Qwen2-VL-1.5B-Instruct
+```
+
+Download HART tokenizer and models
+
+```bash
+git clone https://huggingface.co/mit-han-lab/hart-0.7b-1024px
+```
+
+Download the safety check model (with your SSH key):
+
+```bash
+git clone git@hf.co:google/shieldgemma-2b
 ```
 
 ## Usage

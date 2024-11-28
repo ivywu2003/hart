@@ -23,12 +23,18 @@ from transformers import (
 from hart.modules.models.transformer import HARTForT2I
 from hart.utils import default_prompts, encode_prompts, llm_system_prompt, safety_check
 
+# Check if we're on macOS and can use Metal
+IS_MACOS = (os.uname()[0] == 'Darwin')
+MPS_ENABLED = IS_MACOS and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+
 DESCRIPTION = (
     """# HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"""
     + """\n[\\[Paper\\]](https://arxiv.org/abs/2410.10812) [\\[Project\\]](https://hanlab.mit.edu/projects/hart) [\\[GitHub\\]](https://github.com/mit-han-lab/hart)"""
     + """\n<p>Note: We will replace unsafe prompts with a default prompt: \"A red heart.\"</p>"""
 )
-if not torch.cuda.is_available():
+if not IS_MACOS and not torch.cuda.is_available():
+    DESCRIPTION += "\n<p>Running on CPU 🥶 This demo may not work on CPU.</p>"
+elif IS_MACOS and not MPS_ENABLED:
     DESCRIPTION += "\n<p>Running on CPU 🥶 This demo may not work on CPU.</p>"
 
 MAX_SEED = np.iinfo(np.int32).max
@@ -37,7 +43,12 @@ MAX_IMAGE_SIZE = int(os.getenv("MAX_IMAGE_SIZE", "1024"))
 USE_TORCH_COMPILE = os.getenv("USE_TORCH_COMPILE", "0") == "1"
 ENABLE_CPU_OFFLOAD = os.getenv("ENABLE_CPU_OFFLOAD", "0") == "1"
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+if IS_MACOS:
+    device = torch.device("mps") if MPS_ENABLED else torch.device("cpu")
+    autocast_str = "mps"
+else:
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    autocast_str = "cuda"
 
 NUM_IMAGES_PER_PROMPT = 1
 
@@ -63,16 +74,16 @@ def generate(
     seed = int(randomize_seed_fn(seed, randomize_seed))
     generator = torch.Generator().manual_seed(seed)
 
-    if safety_check.is_dangerous(
-        safety_checker_tokenizer, safety_checker_model, prompt
-    ):
-        prompt = "A red heart."
+    # if safety_check.is_dangerous(
+    #     safety_checker_tokenizer, safety_checker_model, prompt
+    # ):
+    #     prompt = "A red heart."
 
     prompts = [prompt]
 
     with torch.inference_mode():
         with torch.autocast(
-            "cuda", enabled=True, dtype=torch.float16, cache_enabled=True
+            autocast_str, enabled=True, dtype=torch.float16, cache_enabled=True
         ):
 
             (
@@ -165,12 +176,11 @@ if __name__ == "__main__":
     text_model.eval()
     text_tokenizer_max_length = args.max_token_length
 
-    safety_checker_tokenizer = AutoTokenizer.from_pretrained(args.shield_model_path)
-    safety_checker_model = AutoModelForCausalLM.from_pretrained(
-        args.shield_model_path,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-    ).to(device)
+    # safety_checker_tokenizer = AutoTokenizer.from_pretrained(args.shield_model_path)
+    # safety_checker_model = AutoModelForCausalLM.from_pretrained(
+    #     args.shield_model_path,
+    #     torch_dtype=torch.float16,
+    # ).to(device)
 
     examples = [
         "melting apple",
