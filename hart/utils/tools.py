@@ -9,7 +9,7 @@ __rank, __local_rank, __world_size, __device = (
     0,
     0,
     1,
-    "cuda" if torch.cuda.is_available() else "cpu",
+    "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
 )
 
 

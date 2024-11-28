@@ -26,7 +26,8 @@ def is_dangerous(tokenizer, model, user_prompt, threshold=0.5):
     correctly.
     """
 
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    device_str = "mps" if torch.backends.mps.is_available() else "cuda"
+    inputs = tokenizer(prompt, return_tensors="pt").to(device_str)
     with torch.no_grad():
         logits = model(**inputs).logits
 

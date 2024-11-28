@@ -376,7 +376,7 @@ class FusedLlamaRotaryEmbedding2DWithPos(nn.Module):
             device_type = x.device.type
             device_type = (
                 device_type
-                if isinstance(device_type, str) and device_type != "mps"
+                if isinstance(device_type, str)
                 else "cpu"
             )
             with torch.autocast(device_type=device_type, enabled=False):
@@ -548,7 +548,7 @@ class LlamaRotaryEmbedding1D(nn.Module):
         device_type = x.device.type
         device_type = (
             device_type
-            if isinstance(device_type, str) and device_type != "mps"
+            if isinstance(device_type, str)
             else "cpu"
         )
         with torch.autocast(device_type=device_type, enabled=False):
@@ -613,7 +613,7 @@ class LlamaRotaryEmbedding(nn.Module):
         device_type = x.device.type
         device_type = (
             device_type
-            if isinstance(device_type, str) and device_type != "mps"
+            if isinstance(device_type, str)
             else "cpu"
         )
         with torch.autocast(device_type=device_type, enabled=False):

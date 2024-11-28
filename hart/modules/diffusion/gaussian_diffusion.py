@@ -12,6 +12,7 @@ import torch as th
 
 from .diffusion_utils import discretized_gaussian_log_likelihood, normal_kl
 
+DEVICE = th.device("mps" if th.backends.mps.is_available() else "cuda")
 
 def mean_flat(tensor):
     """
@@ -515,7 +516,7 @@ class GaussianDiffusion:
         if noise is not None:
             img = noise
         else:
-            img = th.randn(*shape).cuda()
+            img = th.randn(*shape).to(device=DEVICE)
         indices = list(range(self.num_timesteps))[::-1]
 
         if progress:
@@ -525,7 +526,7 @@ class GaussianDiffusion:
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * shape[0]).cuda()
+            t = th.tensor([i] * shape[0]).to(device=DEVICE)
             with th.no_grad():
                 out = self.p_sample(
                     model,
@@ -685,7 +686,7 @@ class GaussianDiffusion:
         if noise is not None:
             img = noise
         else:
-            img = th.randn(*shape).cuda()
+            img = th.randn(*shape).to(device=DEVICE)
         indices = list(range(self.num_timesteps))[::-1]
 
         if progress:
@@ -695,7 +696,7 @@ class GaussianDiffusion:
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * shape[0]).cuda()
+            t = th.tensor([i] * shape[0]).to(device=DEVICE)
             with th.no_grad():
                 out = self.ddim_sample(
                     model,

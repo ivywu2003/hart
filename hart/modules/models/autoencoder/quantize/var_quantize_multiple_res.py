@@ -105,7 +105,7 @@ class VectorQuantizer2(nn.Module):
 
         idx_list = []
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.autocast(device_type="mps" if torch.backends.mps.is_available() else "cuda", enabled=False):
             mean_vq_loss: torch.Tensor = 0.0
             vocab_hit_V = torch.zeros(
                 self.vocab_size, dtype=torch.float, device=f_BChw.device
