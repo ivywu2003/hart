@@ -2,9 +2,10 @@
 
 using namespace metal;
 
-inline int warpSum(int val, uint thread_id) {
+template<typename T>
+inline T warpSum(T val, uint thread_id) {
     for (int offset = 1; offset < 32; offset *= 2) {
-        int neighbor = simd_shuffle(val, thread_id ^ offset);
+        T neighbor = simd_shuffle(val, thread_id ^ offset);
         val += neighbor;
     }
     return val;
