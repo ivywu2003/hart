@@ -10,11 +10,34 @@ import torch
 from packaging.version import Version, parse
 from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension, CppExtension
 
+import pyopencl as cl
+
 ROOT_DIR = os.path.dirname(__file__)
 
 # Check if we're on macOS and can use Metal
 IS_MACOS = (os.uname()[0] == 'Darwin')
 MPS_ENABLED = IS_MACOS and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+
+def check_opencl():
+    try:
+        # Get all OpenCL platforms
+        platforms = cl.get_platforms()
+        
+        # Check if any of the platforms are Intel-based
+        for platform in platforms:
+            devices = platform.get_devices()
+            for device in devices:
+                if 'Intel' in device.name:
+                    print("Intel OpenCL platform is available.")
+                    return True
+        print("Intel OpenCL platform is not available.")
+        return False
+    except cl.LogicError:
+        print("OpenCL is not available.")
+        return False
+
+XPU_ENABLED = IS_MACOS and check_opencl()
+
 
 # Supported NVIDIA GPU architectures.
 SUPPORTED_ARCHS = {"7.0", "7.5", "8.0", "8.6", "8.9", "9.0"}
@@ -22,11 +45,34 @@ SUPPORTED_ARCHS = {"7.0", "7.5", "8.0", "8.6", "8.9", "9.0"}
 # Compiler flags.
 CXX_FLAGS = ["-g", "-O3", "-fopenmp", "-lgomp", "-std=c++17", "-DENABLE_BF16"]
 if IS_MACOS:
-    CXX_FLAGS = ["-g", "-O3", "-std=c++17", "-DENABLE_BF16"]  # Remove OpenMP flags on macOS
+    if MPS_ENABLED:
+        CXX_FLAGS = ["-g", "-O3", "-std=c++17", "-DENABLE_BF16"]  # Remove OpenMP flags on macOS
+    elif XPU_ENABLED:
+        CXX_FLAGS = ["-g", "-O3", "-std=c++14", "-DENABLE_BF16"]  # Remove OpenMP flags on macOS
 
 NVCC_FLAGS = [
     "-O2",
     "-std=c++17",
+    "-DENABLE_BF16",
+    "-U__CUDA_NO_HALF_OPERATORS__",
+    "-U__CUDA_NO_HALF_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
+    "--expt-relaxed-constexpr",
+    "--expt-extended-lambda",
+    "--use_fast_math",
+    "--threads=8",
+]
+
+if XPU_ENABLED: # change c++ version
+    print("spufwheh")
+    print(cl.get_platforms()[0].get_devices()[0].version)
+
+    NVCC_FLAGS = [
+    "-O2",
+    "-std=c++14",
     "-DENABLE_BF16",
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",
@@ -45,35 +91,58 @@ CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={ABI}"]
 NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={ABI}"]
 
 if IS_MACOS:
-    if not MPS_ENABLED:
-        raise RuntimeError(
-            "MPS is not available on macOS. MPS must be available to build the package."
-    )
+    if MPS_ENABLED:
+        from distutils.unixccompiler import UnixCCompiler
+        if '.mm' not in UnixCCompiler.src_extensions:
+            UnixCCompiler.src_extensions.append('.mm')
+            UnixCCompiler.language_map['.mm'] = 'objc'
 
-    from distutils.unixccompiler import UnixCCompiler
-    if '.mm' not in UnixCCompiler.src_extensions:
-        UnixCCompiler.src_extensions.append('.mm')
-        UnixCCompiler.language_map['.mm'] = 'objc'
-
-    ext_modules = []
-    fused_kernel_extension = CppExtension(
-        name='hart_backend.fused_kernels',
-        sources=[
-            "metal/kernel_library.mm",
-        ],
-        extra_compile_args={
-            "cxx": [
-                '-Wall', 
-                '-std=c++17',
-                '-framework', 
-                'Metal', 
-                '-framework', 
-                'Foundation',
-                '-ObjC++'
+        ext_modules = []
+        fused_kernel_extension = CppExtension(
+            name='hart_backend.fused_kernels',
+            sources=[
+                "metal/kernel_library.mm",
             ],
-        },
-    )
-    ext_modules.append(fused_kernel_extension)
+            extra_compile_args={
+                "cxx": [
+                    '-Wall', 
+                    '-std=c++17',
+                    '-framework', 
+                    'Metal', 
+                    '-framework', 
+                    'Foundation',
+                    '-ObjC++'
+                ],
+            },
+        )
+        ext_modules.append(fused_kernel_extension)
+    elif XPU_ENABLED:
+        from distutils.unixccompiler import UnixCCompiler
+        if '.cl' not in UnixCCompiler.src_extensions:
+            UnixCCompiler.src_extensions.append('.cl')
+
+        ext_modules = []
+        fused_kernel_extension = CppExtension(
+            name='hart_backend.fused_kernels',
+            sources=[
+                "opencl/rope/fused_rope.cl",
+                "opencl/rope/fused_rope_with_pos.cl",
+                "opencl/layernorm/layernorm_kernels.cl",
+                # "opencl/pybind.cpp",
+            ],
+            extra_compile_args={
+                "cxx": [
+                    '-Wall', 
+                    '-lOpenCL',
+                    '-std=c++14',
+                ],
+            },
+        )
+        ext_modules.append(fused_kernel_extension)
+    else:
+        raise RuntimeError(
+            "MPS/XPU is not available on macOS. MPS/XPU must be available to build the package."
+        )
 
 else:
     if CUDA_HOME is None:
@@ -262,26 +331,46 @@ def get_requirements() -> List[str]:
     return requirements
 
 
-setuptools.setup(
-    name="hart_backend",
-    version="0.1.0",
-    author="HART team, MIT HAN Lab",
-    license="Apache 2.0",
-    description=(
-        "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"
-    ),
-    long_description=read_readme(),
-    long_description_content_type="text/markdown",
-    classifiers=[
-        "Programming Language :: Python :: 3.11",
-        "License :: OSI Approved :: Apache Software License",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    ],
-    packages=setuptools.find_packages(
-        exclude=("benchmarks", "csrc", "docs", "examples", "tests")
-    ),
-    python_requires=">=3.8",
-    # install_requires=get_requirements(),
-    ext_modules=ext_modules,
-    cmdclass={"build_ext": BuildExtension},
-)
+def load_kernel(file_path, context):
+    with open(file_path, 'r') as kernel_file:
+        kernel_source = kernel_file.read()
+    program = cl.Program(context, kernel_source).build(options=["-cl-std=CL1.2"])
+    return program
+
+if XPU_ENABLED:
+    platforms = cl.get_platforms()
+    platform = platforms[0]  # Use the first platform
+    devices = platform.get_devices()
+    context = cl.Context(devices)
+
+    load_kernel("opencl/rope/fused_rope.cl", context)
+    load_kernel("opencl/rope/fused_rope_with_pos.cl", context)
+    load_kernel("opencl/layernorm/layernorm_kernels.cl", context)
+
+else:
+    setuptools.setup(
+        name="hart_backend",
+        version="0.1.0",
+        author="HART team, MIT HAN Lab",
+        license="Apache 2.0",
+        description=(
+            "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"
+        ),
+        long_description=read_readme(),
+        long_description_content_type="text/markdown",
+        classifiers=[
+            "Programming Language :: Python :: 3.11",
+            "License :: OSI Approved :: Apache Software License",
+            "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        ],
+        packages=setuptools.find_packages(
+            exclude=("benchmarks", "csrc", "docs", "examples", "tests")
+        ),
+        python_requires=">=3.8",
+        # install_requires=get_requirements(),
+        ext_modules=ext_modules,
+        cmdclass={"build_ext": BuildExtension},
+    )
+
+
+
