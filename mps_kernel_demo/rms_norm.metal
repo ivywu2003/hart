@@ -2,45 +2,28 @@
 
 using namespace metal;
 
-template<typename T>
-inline T warpSum(T val, uint thread_id) {
-    for (int offset = 1; offset < 32; offset *= 2) {
-        T neighbor = simd_shuffle(val, thread_id ^ offset);
-        val += neighbor;
-    }
-    return val;
-}
-
-template<typename T>
-inline T threadgroupReduceSum(T val, threadgroup T* shared [[threadgroup(0)]], 
-                            uint thread_index, uint threadgroup_size) {
-    const uint lane = thread_index & 0x1f;
-    const uint wid = thread_index >> 5;
-    
-    // First reduce within SIMD
-    val = warpSum(val, thread_index);
-    
-    // Write to shared memory
-    if (lane == 0) {
-        shared[wid] = val;
-    }
-    
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    
-    // Read from shared memory and reduce again
-    val = (thread_index < (threadgroup_size / 32.0f)) ? shared[lane] : T(0.0f);
-    val = warpSum(val, thread_index);
-    
-    return val;
-}
-
-kernel void rms_norm_kernel(device float *data [[buffer(0)]],
-                            device float *b [[buffer(1)]],
-                            device float *out [[buffer(2)]],
-                            uint thread_id [[thread_position_in_grid]],
+kernel void rms_norm_kernel(device float *output [[buffer(0)]],
+                            constant float *input [[buffer(1)]],
+                            constant float *weight [[buffer(2)]],
+                            constant uint &hidden_size [[buffer(3)]],
+                            constant float &epsilon [[buffer(4)]],
+                            uint token_id [[thread_position_in_grid]],
+                            uint thread_id [[thread_position_in_threadgroup]],
+                            uint threadgroup_id [[threadgroup_position_in_grid]],
                             uint threads_per_group [[threads_per_threadgroup]]) {
-    float val = data[thread_id];
-    threadgroup float shared_mem[32];
-    out[thread_id] = threadgroupReduceSum(val, shared_mem, thread_id, threads_per_group);
+  float variance = 0.0f;
+
+  for (uint i = 0; i < hidden_size; i += 1) {
+    float x = float(input[threadgroup_id * hidden_size + i]);
+    variance += x * x;
+  }
+
+  float norm_factor = rsqrt(variance / float(hidden_size) + epsilon);
+
+  for (uint i = thread_id; i < hidden_size; i += threads_per_group) {
+    float x = float(input[threadgroup_id * hidden_size + i]);
+    output[threadgroup_id * hidden_size + i] = x * norm_factor * weight[i];
+  }
+
 }
 
