@@ -67,6 +67,8 @@ def main(args):
 
     text_tokenizer = AutoTokenizer.from_pretrained(args.text_model_path)
     text_model = AutoModel.from_pretrained(args.text_model_path).to(device)
+    # text_tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2-VL-72B-Instruct")
+    # text_model = AutoModel.from_pretrained("Qwen/Qwen2-VL-72B-Instruct").to(device)
     text_model.eval()
     text_tokenizer_max_length = args.max_token_length
 
@@ -100,7 +102,7 @@ def main(args):
     start_time = time.time()
     with torch.inference_mode():
         with torch.autocast(
-            device_type="mps" if IS_MACOS else "cuda", enabled=True, dtype=torch.float16, cache_enabled=True
+            device_type="mps" if IS_MACOS else "cuda", enabled=True, dtype=torch.float32, cache_enabled=True
         ):
 
             (

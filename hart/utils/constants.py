@@ -22,4 +22,4 @@ Please generate only the enhanced description for the prompt below and DO NOT in
 User Prompt:\n"""
 
 max_seq_len = 10240
-max_batch_size = 16
+max_batch_size = 8

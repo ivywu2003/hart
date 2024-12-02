@@ -25,6 +25,7 @@ from hart.modules.models.transformer.configuration import HARTForT2IConfig
 from hart.modules.networks.basic_hart import (
     AdaLNBeforeHead,
     AdaLNSelfAttn,
+    LlamaRMSNorm,
     LlamaRMSNormFused,
     TimestepEmbedder,
 )
@@ -102,7 +103,7 @@ class HARTForT2I(PreTrainedModel):
         if self.attn_type == "gpt2":
             norm_layer = partial(nn.LayerNorm, eps=norm_eps)
         elif self.attn_type == "llama":
-            norm_layer = partial(LlamaRMSNormFused, eps=norm_eps)
+            norm_layer = partial(LlamaRMSNorm, eps=norm_eps)
         else:
             raise NotImplementedError
         self.disable_aln = config.disable_aln
