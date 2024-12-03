@@ -21,7 +21,7 @@ void rms_norm_metal(torch::Tensor& output,
                    bool use_quant) {
     
     int hidden_size = input.size(-1);
-    int num_tokens = input.numel() / hidden_size;
+    int num_tokens = input.numel();
 
     @autoreleasepool {
         // Get the default Metal device

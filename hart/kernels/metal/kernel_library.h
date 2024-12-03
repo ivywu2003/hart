@@ -36,43 +36,6 @@ using namespace metal;
 namespace hart {
 
 /************************************************/
-/* COMMON                                       */
-/************************************************/
-
-// Metal equivalent of warpReduceSum
-template<typename T>
-inline T simdReduceSum(T val, uint simd_size = 32) {
-    for (uint offset = simd_size/2; offset > 0; offset /= 2) {
-        val += simd_shuffle_xor(val, offset);
-    }
-    return val;
-}
-
-// Metal equivalent of blockReduceSum
-template<typename T>
-inline T threadgroupReduceSum(T val, threadgroup T* shared [[threadgroup(0)]], 
-                            uint thread_index, uint threadgroup_size) {
-    const uint lane = thread_index & 0x1f;
-    const uint wid = thread_index >> 5;
-    
-    // First reduce within SIMD
-    val = simdReduceSum(val);
-    
-    // Write to shared memory
-    if (lane == 0) {
-        shared[wid] = val;
-    }
-    
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    
-    // Read from shared memory and reduce again
-    val = (thread_index < (threadgroup_size / 32.0f)) ? shared[lane] : T(0.0f);
-    val = simdReduceSum(val);
-    
-    return val;
-}
-
-/************************************************/
 /* LAYERNORM                                    */
 /************************************************/
 
@@ -86,24 +49,31 @@ kernel void rms_norm_kernel(device out_type *output [[buffer(0)]],
                             uint thread_id [[thread_position_in_threadgroup]],
                             uint threadgroup_id [[threadgroup_position_in_grid]],
                             uint threads_per_group [[threads_per_threadgroup]]) {
+
+  bool in_first_group = (token_id % hidden_size < threads_per_group);
+  if (!in_first_group) {
+    return;
+  }
+
   float variance = 0.0f;
+  int hidden_group_num = token_id / hidden_size;
 
   for (uint i = 0; i < hidden_size; i += 1) {
-    float x = float(input[threadgroup_id * hidden_size + i]);
+    float x = float(input[hidden_group_num * hidden_size + i]);
     variance += x * x;
   }
 
   float norm_factor = rsqrt(variance / float(hidden_size) + epsilon);
 
-  for (uint i = thread_id; i < hidden_size; i += threads_per_group) {
-    float x = float(input[threadgroup_id * hidden_size + i]);
+  for (uint i = (token_id % hidden_size); i < hidden_size; i += threads_per_group) {
+    float x = float(input[hidden_group_num * hidden_size + i]);
     if (use_quant) {
       // Convert to int8 with rounding
       float normalized = x * norm_factor * float(weight[i]);
-      output[threadgroup_id * hidden_size + i] = 
+      output[hidden_group_num * hidden_size + i] = 
         out_type(clamp(round(normalized * 127.0f), -128.0f, 127.0f));
     } else {
-      output[threadgroup_id * hidden_size + i] = 
+      output[hidden_group_num * hidden_size + i] = 
         scalar_t(x * norm_factor) * weight[i];
     }
   }
