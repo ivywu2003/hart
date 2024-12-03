@@ -57,6 +57,8 @@ git clone https://github.com/mit-han-lab/hart
 cd hart
 conda create -n hart python=3.11
 conda activate hart
+conda install pytorch::torch
+conda install pytorch::torchvision
 pip install -e .
 cd hart/kernels && python setup.py install
 ```
