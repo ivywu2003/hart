@@ -16,6 +16,12 @@ ROOT_DIR = os.path.dirname(__file__)
 
 # Check if we're on macOS and can use Metal
 IS_MACOS = (os.uname()[0] == 'Darwin')
+available_backends = dir(torch.backends)
+
+# Print the backends
+print("Available backends:")
+for backend in available_backends:
+    print(backend)
 MPS_ENABLED = IS_MACOS and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
 
 def check_opencl():
@@ -67,9 +73,6 @@ NVCC_FLAGS = [
 ]
 
 if XPU_ENABLED: # change c++ version
-    print("spufwheh")
-    print(cl.get_platforms()[0].get_devices()[0].version)
-
     NVCC_FLAGS = [
     "-O2",
     "-std=c++14",
@@ -128,14 +131,10 @@ if IS_MACOS:
                 "opencl/rope/fused_rope.cl",
                 "opencl/rope/fused_rope_with_pos.cl",
                 "opencl/layernorm/layernorm_kernels.cl",
-                # "opencl/pybind.cpp",
+                "opencl/layernorm/layernorm_kernels.cpp",
             ],
             extra_compile_args={
-                "cxx": [
-                    '-Wall', 
-                    '-lOpenCL',
-                    '-std=c++14',
-                ],
+                "cxx": ["-O2"],
             },
         )
         ext_modules.append(fused_kernel_extension)

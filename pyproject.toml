@@ -13,7 +13,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "torch==2.5.0", "torchvision==0.20.0",
     "transformers==4.42.2", "tokenizers>=0.15.2", "sentencepiece==0.2.0", "shortuuid",
     "accelerate==0.27.2", "pydantic==2.2.0", "markdown2[all]", "numpy==1.26.4",
     "scikit-learn==1.2.2", "gradio==4.44.1", "gradio_client==1.3.0",
@@ -24,6 +23,7 @@ dependencies = [
     "omegaconf==2.3.0", "diffusers==0.28.2",
     "einx", "wandb", "xformers==0.0.26.post1 ; platform_system != 'Darwin'",
     "spaces==0.30.3", "pre-commit==4.0.1", "black==24.10.0", "isort==5.13.2",
+    "pyopencl==2024.3",
 ]
 
 [tool.setuptools.packages.find]
