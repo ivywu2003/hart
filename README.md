@@ -132,7 +132,7 @@ python sample.py --model_path /path/to/model \
    --shield_model_path /path/to/ShieldGemma2B
 ```
 
-### Latency Benchmarking
+### Latency Benchmarking (CUDA Only)
 
 Please use the following prompt to perform latency benchmarking:
 

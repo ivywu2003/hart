@@ -46,8 +46,6 @@ kernel void rms_norm_kernel(device out_type *output [[buffer(0)]],
                             constant uint &hidden_size [[buffer(3)]],
                             constant float &epsilon [[buffer(4)]],
                             uint token_id [[thread_position_in_grid]],
-                            uint thread_id [[thread_position_in_threadgroup]],
-                            uint threadgroup_id [[threadgroup_position_in_grid]],
                             uint threads_per_group [[threads_per_threadgroup]]) {
 
   bool in_first_group = (token_id % hidden_size < threads_per_group);
@@ -89,8 +87,6 @@ kernel void rms_norm_kernel<float, float, false>(
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
     uint token_id [[thread_position_in_grid]],
-    uint thread_id [[thread_position_in_threadgroup]],
-    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -102,8 +98,6 @@ kernel void rms_norm_kernel<float, char, true>(
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
     uint token_id [[thread_position_in_grid]],
-    uint thread_id [[thread_position_in_threadgroup]],
-    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -115,8 +109,6 @@ kernel void rms_norm_kernel<half, half, false>(
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
     uint token_id [[thread_position_in_grid]],
-    uint thread_id [[thread_position_in_threadgroup]],
-    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -128,8 +120,6 @@ kernel void rms_norm_kernel<half, char, true>(
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
     uint token_id [[thread_position_in_grid]],
-    uint thread_id [[thread_position_in_threadgroup]],
-    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 /************************************************/
