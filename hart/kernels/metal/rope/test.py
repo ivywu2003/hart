@@ -15,30 +15,29 @@ def get_rotary_matrix(freqs, dtype=torch.float32):
     return rot_mat
 
 def test_fused_rope_with_pos():
+    print("🚀 Starting RoPE forward with pos Metal test...")
+
     # Test parameters
-    batch_size = 2
-    seq_len = 4
-    num_heads = 3
-    head_dim = 8
-    dtype = torch.float32
-
     device = torch.device("mps")
-    
-    # Create input tensor
-    x = torch.randn(batch_size, seq_len, num_heads, head_dim, dtype=dtype, device=device)
-    
-    # Create position frequencies
-    inv_freq = 1.0 / (10000 ** (torch.arange(0, head_dim, 2).float() / head_dim))
-    freqs = torch.outer(torch.arange(seq_len).float(), inv_freq)
-    freqs = freqs.to(device)
-    
-    # Run Metal implementation
-    out_metal = fused_rope_with_pos_forward_func(x, freqs, False)
+    t = torch.load("../../testing/rope/rope_tests/forward_with_pos_t.pt").to(device)
+    freqs = torch.load("../../testing/rope/rope_tests/forward_with_pos_freqs.pt").to(device)
+    correct = torch.load("../../testing/rope/rope_tests/forward_with_pos_output.pt").to(device)
 
-    assert out_metal.shape == (batch_size, seq_len, num_heads, head_dim)
+    output = fused_rope_with_pos_forward_func(t, freqs, False)
     print("✅ Successfully called fused_rope_with_pos_forward_func")
+
     print("Output values:")
-    print(out_metal)
+    print(output)
+
+    print("Correct values:")
+    print(correct)
+
+    torch.testing.assert_close(
+        output,
+        correct,
+    )
+
+    print("✅ Successfully validated fused_rope_with_pos_forward_func output")
 
 def test_fused_rope():
     # Test parameters
@@ -94,5 +93,3 @@ def test_fused_rope_backward():
 
 if __name__ == "__main__":
     test_fused_rope_with_pos()
-    test_fused_rope()
-    test_fused_rope_backward()
