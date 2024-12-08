@@ -1,6 +1,7 @@
 import torch
 import math
 from fused_rope import fused_rope_block_forward, fused_rope_block_backward
+import time
 
 def get_rotary_matrix(freqs, dtype=torch.float32):
     """Helper function to generate rotary matrix from frequencies."""
@@ -68,5 +69,13 @@ def test_fused_rope_block_backward():
 if __name__ == "__main__":
     # test_fused_rope_with_pos()
 
+    start_time = time.time()
     test_fused_rope_block_forward()
+    forward_time = time.time()
+    print("Time: ", forward_time - start_time)
+
     test_fused_rope_block_backward()
+    backward_time = time.time()
+    print("Time: ", backward_time - forward_time)
+
+

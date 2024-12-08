@@ -34,5 +34,4 @@ def fused_rope_block_backward(src: torch.Tensor, freqs: torch.Tensor, d: int, d2
     dst[..., :d2] = src_1 * cos_freqs + src_2 * sin_freqs
     dst[..., d2:2 * d2] = -src_1 * sin_freqs + src_2 * cos_freqs
 
-    print("SRC SHAPE", src.shape)
     return dst
