@@ -45,16 +45,12 @@ kernel void rms_norm_kernel(device out_type *output [[buffer(0)]],
                             constant scalar_t *weight [[buffer(2)]],
                             constant uint &hidden_size [[buffer(3)]],
                             constant float &epsilon [[buffer(4)]],
-                            uint token_id [[thread_position_in_grid]],
+                            uint thread_id [[thread_position_in_threadgroup]],
+                            uint threadgroup_id [[threadgroup_position_in_grid]],
                             uint threads_per_group [[threads_per_threadgroup]]) {
 
-  bool in_first_group = (token_id % hidden_size < threads_per_group);
-  if (!in_first_group) {
-    return;
-  }
-
   float variance = 0.0f;
-  int hidden_group_num = token_id / hidden_size;
+  int hidden_group_num = threadgroup_id;
 
   for (uint i = 0; i < hidden_size; i += 1) {
     float x = float(input[hidden_group_num * hidden_size + i]);
@@ -63,7 +59,7 @@ kernel void rms_norm_kernel(device out_type *output [[buffer(0)]],
 
   float norm_factor = rsqrt(variance / float(hidden_size) + epsilon);
 
-  for (uint i = (token_id % hidden_size); i < hidden_size; i += threads_per_group) {
+  for (uint i = thread_id; i < hidden_size; i += threads_per_group) {
     float x = float(input[hidden_group_num * hidden_size + i]);
     if (use_quant) {
       // Convert to int8 with rounding
@@ -86,7 +82,8 @@ kernel void rms_norm_kernel<float, float, false>(
     constant    float*   weight      [[buffer(2)]], 
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
-    uint token_id [[thread_position_in_grid]],
+    uint thread_id [[thread_position_in_threadgroup]],
+    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -97,7 +94,8 @@ kernel void rms_norm_kernel<float, char, true>(
     constant    float*   weight      [[buffer(2)]], 
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
-    uint token_id [[thread_position_in_grid]],
+    uint thread_id [[thread_position_in_threadgroup]],
+    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -108,7 +106,8 @@ kernel void rms_norm_kernel<half, half, false>(
     constant    half*    weight      [[buffer(2)]], 
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
-    uint token_id [[thread_position_in_grid]],
+    uint thread_id [[thread_position_in_threadgroup]],
+    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 template 
@@ -119,7 +118,8 @@ kernel void rms_norm_kernel<half, char, true>(
     constant    half*    weight      [[buffer(2)]], 
     constant    uint&    hidden_size [[buffer(3)]],
     constant    float&   epsilon     [[buffer(4)]],
-    uint token_id [[thread_position_in_grid]],
+    uint thread_id [[thread_position_in_threadgroup]],
+    uint threadgroup_id [[threadgroup_position_in_grid]],
     uint threads_per_group [[threads_per_threadgroup]]);
 
 /************************************************/

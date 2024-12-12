@@ -7,7 +7,7 @@ name = "hart"
 version = "1.0.0"
 description = "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",

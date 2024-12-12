@@ -21,7 +21,7 @@ void rms_norm_metal(torch::Tensor& output,
                    bool use_quant) {
     
     int hidden_size = input.size(-1);
-    int num_tokens = input.numel();
+    int num_tokens = (input.numel() + (hidden_size - 1)) / hidden_size;
 
     @autoreleasepool {
         // Get the default Metal device
@@ -70,7 +70,7 @@ void rms_norm_metal(torch::Tensor& output,
             MTLSize threadgroupSize = MTLSizeMake(std::min(hidden_size, 1024), 1, 1);
             
             // Dispatch the kernel
-            [computeEncoder dispatchThreads:gridSize
+            [computeEncoder dispatchThreadgroups:gridSize
                         threadsPerThreadgroup:threadgroupSize];
             
             [computeEncoder endEncoding];
