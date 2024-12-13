@@ -88,3 +88,4 @@ def test_fused_rope_backward():
 if __name__ == "__main__":
     test_fused_rope_with_pos()
     test_fused_rope()
+    test_fused_rope_backward()

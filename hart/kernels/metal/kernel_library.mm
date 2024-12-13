@@ -190,7 +190,7 @@ at::Tensor fused_rope_forward_metal(const at::Tensor &input,
     const int stride_h = input.stride(2);
     const int stride_d = input.stride(3);
 
-    const int d2 = freqs.size(-1);
+    const int d2 = freqs.size(3);
     
     auto act_options = input.options().requires_grad(false);
     at::Tensor output;
@@ -276,22 +276,25 @@ at::Tensor fused_rope_forward_metal(const at::Tensor &input,
 at::Tensor fused_rope_backward_metal(const at::Tensor &output_grads,
                                         const at::Tensor &freqs,
                                         const bool transpose_output_memory) {
-    TORCH_CHECK(output_grads.dim() == 4, "expected 4D tensor");
-    TORCH_CHECK(freqs.dim() == 2, "expected 2D tensor");
-    
     const int s = output_grads.size(0);
     const int b = output_grads.size(1);
     const int h = output_grads.size(2);
     const int d = output_grads.size(3);
-    
-    auto input_grads = at::empty_like(output_grads);
     
     const int stride_s = output_grads.stride(0);
     const int stride_b = output_grads.stride(1);
     const int stride_h = output_grads.stride(2);
     const int stride_d = output_grads.stride(3);
 
-    const int d2 = freqs.size(-1);
+    const int d2 = freqs.size(3);
+
+    auto act_options = output_grads.options().requires_grad(false);
+    at::Tensor input_grads;
+    if (transpose_output_memory) {
+        input_grads = torch::empty({b, s, h, d}, act_options).transpose(0, 1);
+    } else {
+        input_grads = torch::empty({s, b, h, d}, act_options);
+    }
     
     const int o_stride_s = input_grads.stride(0);
     const int o_stride_b = input_grads.stride(1);
@@ -336,18 +339,23 @@ at::Tensor fused_rope_backward_metal(const at::Tensor &output_grads,
             [computeEncoder setBuffer:getMTLBufferStorage(output_grads) offset:output_grads.storage_offset() * output_grads.element_size() atIndex:0];
             [computeEncoder setBuffer:getMTLBufferStorage(freqs) offset:freqs.storage_offset() * freqs.element_size() atIndex:1];
             [computeEncoder setBuffer:getMTLBufferStorage(input_grads) offset:input_grads.storage_offset() * input_grads.element_size() atIndex:2];
-            [computeEncoder setBytes:&h length:sizeof(int) atIndex:3];
-            [computeEncoder setBytes:&d length:sizeof(int) atIndex:4];
-            [computeEncoder setBytes:&d2 length:sizeof(int) atIndex:5];
-            [computeEncoder setBytes:&stride_h length:sizeof(int) atIndex:6];
-            [computeEncoder setBytes:&stride_d length:sizeof(int) atIndex:7];
-            [computeEncoder setBytes:&o_stride_h length:sizeof(int) atIndex:8];
-            [computeEncoder setBytes:&o_stride_d length:sizeof(int) atIndex:9];
-            [computeEncoder setBytes:&s length:sizeof(int) atIndex:10];
+            [computeEncoder setBytes:&s length:sizeof(int) atIndex:3];
+            [computeEncoder setBytes:&b length:sizeof(int) atIndex:4];
+            [computeEncoder setBytes:&h length:sizeof(int) atIndex:5];
+            [computeEncoder setBytes:&d length:sizeof(int) atIndex:6];
+            [computeEncoder setBytes:&d2 length:sizeof(int) atIndex:7];
+            [computeEncoder setBytes:&stride_s length:sizeof(int) atIndex:8];
+            [computeEncoder setBytes:&stride_b length:sizeof(int) atIndex:9];
+            [computeEncoder setBytes:&stride_h length:sizeof(int) atIndex:10];
+            [computeEncoder setBytes:&stride_d length:sizeof(int) atIndex:11];
+            [computeEncoder setBytes:&o_stride_s length:sizeof(int) atIndex:12];
+            [computeEncoder setBytes:&o_stride_b length:sizeof(int) atIndex:13];
+            [computeEncoder setBytes:&o_stride_h length:sizeof(int) atIndex:14];
+            [computeEncoder setBytes:&o_stride_d length:sizeof(int) atIndex:15];
 
             // Set grid and threadgroup size
             MTLSize gridSize = MTLSizeMake(s, b, 1);
-            MTLSize threadgroupSize = MTLSizeMake(32, 32, 1);
+            MTLSize threadgroupSize = MTLSizeMake(32, h < 16 ? 4 : 8, 1);
             [computeEncoder dispatchThreadgroups:gridSize
                         threadsPerThreadgroup:threadgroupSize];
             
