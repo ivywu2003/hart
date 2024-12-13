@@ -180,15 +180,10 @@ at::Tensor fused_rope_with_pos_forward_metal(const at::Tensor &input,
 at::Tensor fused_rope_forward_metal(const at::Tensor &input,
                                         const at::Tensor &freqs,
                                         const bool transpose_output_memory) {
-    TORCH_CHECK(input.dim() == 4, "expected 4D tensor");
-    TORCH_CHECK(freqs.dim() == 2, "expected 2D tensor");
-    
     const int s = input.size(0);
     const int b = input.size(1);
     const int h = input.size(2);
     const int d = input.size(3);
-    
-    auto output = at::empty_like(input);
     
     const int stride_s = input.stride(0);
     const int stride_b = input.stride(1);
@@ -196,6 +191,14 @@ at::Tensor fused_rope_forward_metal(const at::Tensor &input,
     const int stride_d = input.stride(3);
 
     const int d2 = freqs.size(-1);
+    
+    auto act_options = input.options().requires_grad(false);
+    at::Tensor output;
+    if (transpose_output_memory) {
+        output = torch::empty({b, s, h, d}, act_options).transpose(0, 1);
+    } else {
+        output = torch::empty({s, b, h, d}, act_options);
+    }
     
     const int o_stride_s = output.stride(0);
     const int o_stride_b = output.stride(1);
@@ -240,18 +243,23 @@ at::Tensor fused_rope_forward_metal(const at::Tensor &input,
             [computeEncoder setBuffer:getMTLBufferStorage(input) offset:input.storage_offset() * input.element_size() atIndex:0];
             [computeEncoder setBuffer:getMTLBufferStorage(freqs) offset:freqs.storage_offset() * freqs.element_size() atIndex:1];
             [computeEncoder setBuffer:getMTLBufferStorage(output) offset:output.storage_offset() * output.element_size() atIndex:2];
-            [computeEncoder setBytes:&h length:sizeof(int) atIndex:3];
-            [computeEncoder setBytes:&d length:sizeof(int) atIndex:4];
-            [computeEncoder setBytes:&d2 length:sizeof(int) atIndex:5];
-            [computeEncoder setBytes:&stride_h length:sizeof(int) atIndex:6];
-            [computeEncoder setBytes:&stride_d length:sizeof(int) atIndex:7];
-            [computeEncoder setBytes:&o_stride_h length:sizeof(int) atIndex:8];
-            [computeEncoder setBytes:&o_stride_d length:sizeof(int) atIndex:9];
-            [computeEncoder setBytes:&s length:sizeof(int) atIndex:10];
+            [computeEncoder setBytes:&s length:sizeof(int) atIndex:3];
+            [computeEncoder setBytes:&b length:sizeof(int) atIndex:4];
+            [computeEncoder setBytes:&h length:sizeof(int) atIndex:5];
+            [computeEncoder setBytes:&d length:sizeof(int) atIndex:6];
+            [computeEncoder setBytes:&d2 length:sizeof(int) atIndex:7];
+            [computeEncoder setBytes:&stride_s length:sizeof(int) atIndex:8];
+            [computeEncoder setBytes:&stride_b length:sizeof(int) atIndex:9];
+            [computeEncoder setBytes:&stride_h length:sizeof(int) atIndex:10];
+            [computeEncoder setBytes:&stride_d length:sizeof(int) atIndex:11];
+            [computeEncoder setBytes:&o_stride_s length:sizeof(int) atIndex:12];
+            [computeEncoder setBytes:&o_stride_b length:sizeof(int) atIndex:13];
+            [computeEncoder setBytes:&o_stride_h length:sizeof(int) atIndex:14];
+            [computeEncoder setBytes:&o_stride_d length:sizeof(int) atIndex:15];
 
             // Set grid and threadgroup size
             MTLSize gridSize = MTLSizeMake(s, b, 1);
-            MTLSize threadgroupSize = MTLSizeMake(32, 32, 1);
+            MTLSize threadgroupSize = MTLSizeMake(32, h < 16 ? 4 : 8, 1);
             [computeEncoder dispatchThreadgroups:gridSize
                         threadsPerThreadgroup:threadgroupSize];
             
