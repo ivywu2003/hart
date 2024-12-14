@@ -986,6 +986,7 @@ class LlamaAttention(nn.Module):
         context_mask=None,
         m_maskgit=None,
     ):
+        assert not torch.isnan(x).any(), f"{x}"
         B, L, C = x.shape
         # [B, L, 2]
         if self.context_token == 0:
@@ -1068,7 +1069,9 @@ class LlamaAttention(nn.Module):
         else:
             print("Context token cannot be negative", self.context_token)
             raise NotImplementedError
+        assert not torch.isnan(q).any(), f"{q}"
         q, k = apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=dim_unsqueeze)
+        assert not torch.isnan(q).any(), f"{q}"
         ################## Use naive rotary embedding ##################
 
         ################## Use optimized rotary embedding ##################
@@ -1147,6 +1150,9 @@ class LlamaAttention(nn.Module):
                 scale=self.scale,
             ).view(B, L, C)
         else:
+            assert not torch.isnan(q).any()
+            assert not torch.isnan(k).any()
+            assert not torch.isnan(v).any()
             oup = (
                 slow_attn(
                     query=q,
@@ -1159,6 +1165,7 @@ class LlamaAttention(nn.Module):
                 .transpose(1, 2)
                 .reshape(B, L, C)
             )
+            assert not torch.isnan(oup).any()
 
         return self.proj_drop(self.proj(oup))
 
@@ -1300,6 +1307,7 @@ class AdaLNSelfAttn(nn.Module):
             gamma1, gamma2, scale1, scale2, shift1, shift2 = (
                 self.ada_lin(condition).view(-1, 1, 6, self.C).unbind(2)
             )
+            assert not torch.isnan(x).any()
             x = x + self.drop_path(
                 self.attn(
                     self.ln_wo_grad(x).mul(scale1.add(1)).add_(shift1),
@@ -1310,6 +1318,7 @@ class AdaLNSelfAttn(nn.Module):
                     m_maskgit=m_maskgit,
                 ).mul_(gamma1)
             )
+            assert not torch.isnan(x).any()
             if self.use_cross_attn:
                 # xattn_mask = get_xattn_mask(context_mask)
                 x[:, cond_BD.size(1) :] += self.cross_attn(
@@ -1318,6 +1327,7 @@ class AdaLNSelfAttn(nn.Module):
             x = x + self.drop_path(
                 self.ffn(self.ln_wo_grad(x).mul(scale2.add(1)).add_(shift2)).mul(gamma2)
             )  # this mul(gamma2) cannot be in-placed when FusedMLP is used
+            assert not torch.isnan(x).any()
         else:
             if not self.shared_aln:
                 x = x + self.drop_path(
@@ -1330,12 +1340,14 @@ class AdaLNSelfAttn(nn.Module):
                         m_maskgit=m_maskgit,
                     )
                 )
+                assert not torch.isnan(x).any()
                 if self.use_cross_attn:
                     # xattn_mask = get_xattn_mask(context_mask)
                     x[:, cond_BD.size(1) :] += self.cross_attn(
                         x[:, cond_BD.size(1) :], cond_BD, None
                     )
                 x = x + self.drop_path(self.ffn(self.ln_wo_grad(x)))
+                assert not torch.isnan(x).any()
             else:
                 # cond_BD: [batch, 1, embed_dim]
                 condition = context_pooling(cond_BD, context_mask, mode="avg")
@@ -1354,6 +1366,7 @@ class AdaLNSelfAttn(nn.Module):
                         m_maskgit=m_maskgit,
                     ).mul_(gamma1)
                 )
+                assert not torch.isnan(x).any()
                 if self.use_cross_attn:
                     # xattn_mask = get_xattn_mask(context_mask)
                     x[:, cond_BD.size(1) :] += self.cross_attn(
@@ -1364,6 +1377,7 @@ class AdaLNSelfAttn(nn.Module):
                         gamma2
                     )
                 )
+                assert not torch.isnan(x).any()
         return x
 
     def extra_repr(self) -> str:

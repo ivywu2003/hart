@@ -13,6 +13,10 @@ from hart.modules.models.autoencoder.quantize.var_quantize_multiple_res import (
 
 __all__ = ["HARTHybridQuantizer"]
 
+def mps_interpolate(t, *args, **kwargs):
+    cpu_t = t.to("cpu")
+    res = F.interpolate(cpu_t, *args, **kwargs)
+    return res.to("mps")
 
 class HARTHybridQuantizer(VARQuantizer):
     def __init__(self, *args, **kwargs):
@@ -50,7 +54,7 @@ class HARTHybridQuantizer(VARQuantizer):
                 # find the nearest embedding
                 if self.using_znorm:
                     rest_NC = (
-                        F.interpolate(f_rest, size=(pn, pn), mode="area")
+                        mps_interpolate(f_rest, size=(pn, pn), mode="area")
                         .permute(0, 2, 3, 1)
                         .reshape(-1, C)
                         if (si != SN - 1)
@@ -63,7 +67,7 @@ class HARTHybridQuantizer(VARQuantizer):
                     )
                 else:
                     rest_NC = (
-                        F.interpolate(f_rest, size=(pn, pn), mode="area")
+                        mps_interpolate(f_rest, size=(pn, pn), mode="area")
                         .permute(0, 2, 3, 1)
                         .reshape(-1, C)
                     )
@@ -84,7 +88,7 @@ class HARTHybridQuantizer(VARQuantizer):
                 # calc loss
                 idx_list.append(idx_N)
                 idx_Bhw = idx_N.view(B, pn, pn)
-                h_BChw = F.interpolate(
+                h_BChw = mps_interpolate(
                     self.embedding(idx_Bhw).permute(0, 3, 1, 2),
                     size=(H, W),
                     mode="bicubic",
@@ -141,7 +145,7 @@ class HARTHybridQuantizer(VARQuantizer):
         SN = len(patch_hws)
         for si, (ph, pw) in enumerate(patch_hws):
             z_NC = (
-                F.interpolate(f_rest, size=(ph, pw), mode="area")
+                mps_interpolate(f_rest, size=(ph, pw), mode="area")
                 .permute(0, 2, 3, 1)
                 .reshape(-1, C)
                 if (si != SN - 1)
@@ -156,7 +160,7 @@ class HARTHybridQuantizer(VARQuantizer):
             idx_N = torch.argmin(d_no_grad, dim=1)
 
             idx_Bhw = idx_N.view(B, ph, pw)
-            h_BChw = F.interpolate(
+            h_BChw = mps_interpolate(
                 self.embedding(idx_Bhw).permute(0, 3, 1, 2),
                 size=(H, W),
                 mode="bicubic",
@@ -193,10 +197,10 @@ class HARTHybridQuantizer(VARQuantizer):
         HW = patch_nums[-1]
         if si != SN - 1:
             h = self.quant_resi[si / (SN - 1)](
-                F.interpolate(h_BChw, size=(HW, HW), mode="bicubic")
+                mps_interpolate(h_BChw, size=(HW, HW), mode="bilinear")
             )  # conv after upsample
             f_hat.add_(h)
-            return f_hat, F.interpolate(
+            return f_hat, mps_interpolate(
                 f_hat,
                 size=(patch_nums[si + 1], patch_nums[si + 1]),
                 mode="area",

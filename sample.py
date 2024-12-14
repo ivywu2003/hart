@@ -4,6 +4,7 @@ import datetime
 import os
 import random
 import time
+import gc
 
 import numpy as np
 import torch
@@ -58,6 +59,7 @@ def main(args):
     model = AutoModel.from_pretrained(args.model_path)
     model = model.to(device)
     model.eval()
+    args.use_ema = False
 
     if args.use_ema:
         ema_model = copy.deepcopy(model)
@@ -100,7 +102,7 @@ def main(args):
     start_time = time.time()
     with torch.inference_mode():
         with torch.autocast(
-            device_type="mps" if IS_MACOS else "cuda", enabled=True, dtype=torch.float16, cache_enabled=True
+            device_type="mps" if IS_MACOS else "cuda", enabled=True, dtype=torch.float16, cache_enabled=False
         ):
 
             (
@@ -116,6 +118,11 @@ def main(args):
                 llm_system_prompt,
                 args.use_llm_system_prompt,
             )
+
+            del text_model
+            del text_tokenizer
+            torch.mps.empty_cache()
+            gc.collect()
 
             infer_func = (
                 ema_model.autoregressive_infer_cfg

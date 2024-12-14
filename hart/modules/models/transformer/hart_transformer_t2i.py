@@ -380,6 +380,7 @@ class HARTForT2I(PreTrainedModel):
         for b in self.blocks:
             b.attn.kv_caching(True)
         for si, pn in enumerate(self.patch_nums[:-1]):  # si: i-th segment
+            print(f"{si}: {self.patch_nums[:-1]}")
             ratio = si / self.num_stages_minus_1
             # last_L = cur_L
             if si > 0:
@@ -390,7 +391,8 @@ class HARTForT2I(PreTrainedModel):
             cond_BD_or_gss = self.shared_ada_lin(cond_BD)
             x = next_token_map
             AdaLNSelfAttn.forward
-            for b in self.blocks:
+            for bi, b in enumerate(self.blocks):
+                print(f"{si} {bi}: {x}")
                 # Haotian: si used for position embed
                 x = b(
                     x=x,
